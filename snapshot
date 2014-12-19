@@ -1,0 +1,134 @@
+#!/bin/bash
+###########################################################################
+# snapshot
+#
+#     Rotates snapshots of backups using hard links
+#
+#     Keeps track of:
+#          - 48 hours of snapshots (48*60/interval)
+#          - 60 days worth of midnight snapshots
+#          - 24 months of snapshots from the 1st
+#     Ussage:
+#          snapshot /path/to/backup.sql.gz
+#          mysqldump ... | gzip -c | snapshot /path/to/backup.sql.gz
+#
+###########################################################################
+
+if ! hash date 2> /dev/null; then
+        echo "-snapshot: date command not found" 1>&2
+        exit 1
+fi
+
+if ! hash ln 2> /dev/null; then
+        echo "-snapshot: ln: command not found" 1>&2
+        exit 1
+fi
+
+# Date Info
+
+month=$(date +"%b")
+day=$(date +"%d")
+year=$(date +"%Y")
+time=$(date +"%H_%M")
+date=$(date +"%d%b%Y")
+dateFirst=$(date --date="$month 01" +"%d%b%Y" 2> /dev/null)
+
+# Test to see if we're using GNU date or BSD date
+
+if [ "$dateFirst" == "" ]; then
+        dateFirst=$(date -v1d +"%d%b%Y")
+        back2date=$(date -v-2d +"%d%b%Y")
+        back2monthY=$(date -v-2m +"%b%Y")
+        back2year=$(date -v-2y +"%Y")
+else
+        back2date=$(date --date="-2 day" +"%d%b%Y")
+        back2monthY=$(date --date="-2 month" +"%b%Y")
+        back2year=$(date --date="-2 year" +"%Y")
+fi
+
+if [ "$dateFirst" == "" ]; then
+        echo "-snapshot: Unknown version of date command." 1>&2
+        exit 1
+fi
+
+# Directories
+
+filepath=$1
+backup=$2
+
+if [ "$filepath" == "" ]; then
+        echo "-snapshot: Expecting filename as first argument" 1>&2
+        exit 1
+fi
+
+if [ "$backup" == "" ]; then
+        backup=~/backup
+fi
+
+if [ ! -d "$backup" ]; then
+        echo "-snapshot: Directory "$backup" doesn't exist" 1>&2
+        exit 1
+fi
+
+snapshots=$backup/snapshots
+daily=$backup/daily
+monthly=$backup/monthly
+basename=${filepath##*/}
+ext=${basename#*.}
+basename=${basename%%.*}
+filename=$basename-$date-$time.$ext
+
+##############################
+# Make new snapshot
+##############################
+
+if [ ! -d "$snapshots/$date" ]; then
+        mkdir -p "$snapshots/$date"
+fi
+
+if [ -t 0 ]; then
+        if [ ! -f "$filepath" ]; then
+                echo "-snapshot: '$filepath' doesn't exist" 1>&2
+                exit 1
+        fi
+
+    ln "$filepath" "$snapshots/$date/$filename"
+else
+    cat > "$snapshots/$date/$filename"
+fi
+
+##############################
+# Daily/monthly snapshots
+##############################
+
+if [ "$time" == "00_00" ]; then
+        if [ ! -d "$daily/$month$year" ]; then
+                mkdir -p "$daily/$month$year"
+        fi
+
+        ln "$snapshots/$date/$filename" "$daily/$month$year/$filename"
+
+        if [ "$day" == "01" ]; then
+                if [ ! -d "$monthly/$year" ]; then
+                        mkdir -p "$monthly/$year"
+                fi
+
+                ln "$snapshots/$date/$filename" "$monthly/$year/$filename"
+        fi
+fi
+
+##############################
+# Clean up old snapshots
+##############################
+
+if [ -d "$snapshots/$back2date" ]; then
+        rm -fr "$snapshots/$back2date"
+fi
+
+if [ -d "$daily/$back2monthY" ]; then
+        rm -fr "$daily/$back2monthY"
+fi
+
+if [ -d "$monthly/$back2year" ]; then
+        rm -fr "$monthly/$back2year"
+fi
