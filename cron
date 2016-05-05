@@ -1,6 +1,8 @@
-# FOR MYISAM TABLES every 6 hours
-0 */6 * * * mysqldump -u[user] -p[password] [db] | gzip -c | ./snapshot [db].sql.gz 2>&1>> ~/[db]_dump.log
+# FOR MYISAM TABLES every 6 hours with locks
+0 */6 * * * mysqldump -u[user] -p[password] [db] | gzip -c | ./snapshot [db].sql.gz > ~/[db]_dump.log
 
-#FOR INNODB TABLES every 6 hours
+#FOR INNODB TABLES every 6 hours lockless
 
 0 */6 * * * mysqldump --single-transaction --lock-tables=false -u[user] -p[password] [db] | gzip -c | ./snapshot [db].sql.gz 2>&1>> ~/[db]_dump.log
+
+0 */6 * * * mysqldump --single-transaction --lock-tables=false -u[user] -p[password] [db] | gzip -c | ./snapshot [db].sql.gz > ~/[db]_dump.log
